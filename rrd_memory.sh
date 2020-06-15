@@ -9,12 +9,11 @@ rrdtool=/usr/bin/rrdtool
 ds_name=memory
 
 #directory to store graphs - DO NOT REMOVE $ds_name
-img=/PATH/To/CHANGE/$ds_name
+img=/zfs/ssd/www/rrd/$ds_name
 
 # set db parameters
 # db directory - DO NOT REMOVE $ds_name
-db=/PATH/To/CHANGE/db/$ds_name.rrd
-
+db=/zfs/ssd/pool/rrd/db/$ds_name.rrd
 
 # heartbeat time(s) wihout data
 hbeat=120
@@ -41,6 +40,7 @@ MemFree=$(grep -w MemFree: /proc/meminfo | awk '{print $2}')
 MemBuffers=$(grep -w Buffers: /proc/meminfo | awk '{print $2}')
 MemCached=$(grep -w Cached: /proc/meminfo | awk '{print $2}')
 MemUsed=$(($MemTotal - $MemFree - $MemBuffers - $MemCached))
+MemZFS=$(grep -w size /proc/spl/kstat/zfs/arcstats | awk '{print $3}')
 
 #memtotal=$MemTotal
 #memfree=$MemFree
@@ -53,6 +53,8 @@ memfree=$(($MemFree * 1024))
 membuff=$(($MemBuffers * 1024))
 memcached=$(($MemCached * 1024))
 memused=$(($MemUsed * 1024))
+memzfs=$(($MemZFS))
+
 
 if [ ! -e $db ]
 then
@@ -63,12 +65,13 @@ then
   DS:membuff:GAUGE:$hbeat:$min_value:$memtotal \
   DS:memcached:GAUGE:$hbeat:$min_value:$memtotal \
   DS:memused:GAUGE:$hbeat:$min_value:$memtotal \
-  RRA:MAX:0.5:1:$steps
+  DS:memzfs:GAUGE:$hbeat:$min_value:$memtotal \
+  RRA:AVERAGE:0.5:1:$steps
 fi
 
 
 echo "Updating RRD $ds_name with values: $memtotal:$memfree:$membuff:$memcached:$memused:$memzfs"
-$rrdtool update $db  N:$memtotal:$memfree:$membuff:$memcached:$memused
+$rrdtool update $db  N:$memtotal:$memfree:$membuff:$memcached:$memused:$memzfs
 
 # generate graph from db
 for period in day week month ; do
@@ -92,18 +95,18 @@ esac
    --vertical-label='bytes' \
    $x_axis \
    --upper-limit $memtotal \
+   --lower-limit '0' \
    --rigid \
    --base=1024 \
-   DEF:total=$db:memtotal:MAX \
-   DEF:used=$db:memused:MAX \
-   DEF:free=$db:memfree:MAX \
-   DEF:buff=$db:membuff:MAX \
-   DEF:cached=$db:memcached:MAX \
+   DEF:total=$db:memtotal:AVERAGE \
+   DEF:used=$db:memused:AVERAGE \
+   DEF:free=$db:memfree:AVERAGE \
+   DEF:buff=$db:membuff:AVERAGE \
+   DEF:cached=$db:memcached:AVERAGE \
+   DEF:zfs=$db:memzfs:AVERAGE \
    AREA:used#00FF00:"In use":STACK:skipscale \
    AREA:cached#FFa500:"Cached":STACK:skipscale \
    AREA:buff#0000FF:"Buffered":STACK:skipscale  \
+   AREA:zfs#FF69B4cc:"ZFS ARC stats" \
 
 done
-
-#   AREA:zfs#FF69B488:"ZFS ARC stats" \
-
